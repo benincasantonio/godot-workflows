@@ -42,6 +42,8 @@ jobs:
           workflow = pathlib.Path(".github/workflows/android.yml").read_text()
           if not re.search(r"^\s+ref: " + re.escape(version) + r"$", workflow, re.M):
               raise ValueError("Embedded tools tag must match the release tag.")
+          if subprocess.run(["git", "show-ref", "--verify", "--quiet", "refs/tags/v1"]).returncode == 0:
+              subprocess.run(["git", "merge-base", "--is-ancestor", "refs/tags/v1", revision], check=True)
           subprocess.run(["git", "tag", "--force", "v1", revision], check=True)
           subprocess.run(["git", "push", "origin", "refs/tags/v1", "--force"], check=True)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as report:

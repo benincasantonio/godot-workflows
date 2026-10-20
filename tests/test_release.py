@@ -4,11 +4,13 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from project import metadata, set_options, validate_request, within
-from build import artifact, hook, stage, verify_elf, verify_manifest
+from build import artifact, build, hook, stage, verify_elf, verify_manifest
 
 FIXTURE = Path(__file__).parent / "fixture"
 
@@ -72,6 +74,18 @@ class ReleaseTests(unittest.TestCase):
                 artifact(root, selected)
                 name = "release." + selected.lower()
                 self.assertEqual({p.name for p in (root / "artifact").iterdir()}, {name, name + ".sha256"})
+
+    def test_invalid_signing_input_is_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            info = work / "metadata.json"
+            info.write_text(json.dumps(metadata(FIXTURE, "Android")))
+            args = SimpleNamespace(project=str(FIXTURE.resolve()), preset="Android",
+                                   metadata=str(info), work=str(work))
+            with patch.dict(os.environ, {"UPLOAD_KEYSTORE_BASE64": "invalid!!"}, clear=True):
+                with self.assertRaises(ValueError):
+                    build(args)
+            self.assertFalse((work / "upload.jks").exists())
 
     def test_manifest_guard(self):
         expected = metadata(FIXTURE, "Android")
