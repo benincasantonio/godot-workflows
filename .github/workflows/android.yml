@@ -52,7 +52,7 @@ jobs:
       contents: read
       id-token: write
     concurrency:
-      group: ${{ inputs.publish && 'godot-android-publish' || format('godot-build-{0}-{1}', github.run_id, github.run_attempt) }}
+      group: ${{ inputs.publish && 'godot-android-publish' || format('godot-build-{0}-{1}-{2}', github.run_id, github.run_attempt, inputs.artifact-format) }}
       cancel-in-progress: false
     defaults:
       run:
@@ -80,7 +80,7 @@ jobs:
         with:
           repository: benincasantonio/godot-workflows
           # Immutable release; move only the caller's v1 tag after testing.
-          ref: v1.0.0
+          ref: v1.0.1
           path: .release-tools
           persist-credentials: false
       - name: Initialize isolated paths
