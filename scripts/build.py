@@ -153,6 +153,7 @@ def build(args):
     work = Path(args.work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
+    env["GRADLE_OPTS"] = env.get("GRADLE_OPTS", "") + " -Dorg.gradle.daemon=false"
     key = work / "upload.jks"
     try:
         if env.get("UPLOAD_KEYSTORE_BASE64"):
