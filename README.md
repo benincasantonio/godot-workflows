@@ -59,7 +59,7 @@ Hooks must be executable files in the caller repository, with a shebang. They ru
 
 Both receive `GODOT_BIN`, `GODOT_TEMPLATE_DIR`, `JAVA_HOME`, `ANDROID_HOME`, `BUNDLETOOL_JAR`, `GRADLE_USER_HOME`, and Godot's release-keystore environment variables. Hooks may install plugins or run game tests; nonzero exit stops the release. Do not print credentials. Preparation must retain the package, version and architecture/SDK metadata read during preflight. Public game-specific IDs belong in the game's own configuration.
 
-The toolchain uses Ubuntu 24.04, Temurin 21, SDK platforms 35/36, Build-Tools 35.0.0/35.0.1, NDK 28.1.13356709, CMake 3.10.2.4988404 and bundletool 1.18.3. Godot binaries/templates are checked against official SHA-512 sums; bundletool and workflow actions are pinned.
+The toolchain uses Ubuntu 24.04, Temurin 21.0.12+1, SDK platforms 35/36, Build-Tools 35.0.0/35.0.1, NDK 28.1.13356709, CMake 3.10.2.4988404 and bundletool 1.18.3. Godot binaries/templates are checked against official SHA-512 sums; bundletool and workflow actions are pinned.
 
 ## Maintaining v1
 

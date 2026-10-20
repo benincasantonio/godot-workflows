@@ -52,7 +52,7 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "21.0.12+1"
       - name: Install verified tools
         run: python3 scripts/install_tools.py 4.6.2 "$RUNNER_TEMP/godot-tools"
       - name: Build plain Godot fixture with a disposable key

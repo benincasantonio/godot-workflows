@@ -125,7 +125,7 @@ jobs:
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "21.0.12+1"
       - name: Install verified Godot and Android tools
         run: python3 "$GITHUB_WORKSPACE/.release-tools/scripts/install_tools.py" "$GODOT_VERSION" "$RUNNER_TEMP/godot-tools"
       - name: Build and verify signed release

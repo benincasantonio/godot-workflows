@@ -47,7 +47,9 @@ def main():
     bundletool = root / "bundletool.jar"
     download("https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar",
              bundletool, BUNDLETOOL_SHA256, "sha256")
-    subprocess.run(["sdkmanager", "platform-tools", "platforms;android-35", "platforms;android-36",
+    sdk = Path(os.environ["ANDROID_HOME"])
+    sdkmanager = sdk / "cmdline-tools/latest/bin/sdkmanager"
+    subprocess.run([sdkmanager, "platform-tools", "platforms;android-35", "platforms;android-36",
                     "build-tools;35.0.0", "build-tools;35.0.1", "ndk;28.1.13356709",
                     "cmake;3.10.2.4988404"], check=True)
     with open(os.environ["GITHUB_ENV"], "a") as stream:
