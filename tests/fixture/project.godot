@@ -1,0 +1,8 @@
+config_version=5
+[application]
+config/name="Godot Workflow Fixture"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+run/main_scene="res://main.tscn"
+[rendering]
+renderer/rendering_method="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true

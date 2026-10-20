@@ -1,0 +1,201 @@
+name: Godot Android
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        default: false
+      artifact-format:
+        type: string
+        default: AAB
+      project-directory:
+        type: string
+        default: .
+      export-preset:
+        type: string
+        default: Android
+      godot-version:
+        type: string
+        default: 4.6.2
+      prepare-script:
+        type: string
+        default: ""
+      verify-script:
+        type: string
+        default: ""
+      gcp-project-id:
+        type: string
+        default: ""
+      workload-identity-provider:
+        type: string
+        default: ""
+      service-account:
+        type: string
+        default: ""
+    secrets:
+      upload-keystore-base64:
+        required: true
+      upload-key-alias:
+        required: true
+      upload-key-password:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: ${{ inputs.publish && 'godot-android-publish' || format('godot-build-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+        working-directory: game
+    env:
+      PUBLISH: ${{ inputs.publish }}
+      ARTIFACT_FORMAT: ${{ inputs.artifact-format }}
+      PROJECT_DIRECTORY: ${{ inputs.project-directory }}
+      EXPORT_PRESET: ${{ inputs.export-preset }}
+      GODOT_VERSION: ${{ inputs.godot-version }}
+      PREPARE_SCRIPT: ${{ inputs.prepare-script }}
+      VERIFY_SCRIPT: ${{ inputs.verify-script }}
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+      FASTLANE_OPT_OUT_USAGE: "1"
+    steps:
+      - name: Checkout game
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: game
+          persist-credentials: false
+      - name: Checkout matching workflow tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: benincasantonio/godot-workflows
+          # Immutable release; move only the caller's v1 tag after testing.
+          ref: v1.0.0
+          path: .release-tools
+          persist-credentials: false
+      - name: Initialize isolated paths
+        run: |
+          echo "RELEASE_METADATA=$RUNNER_TEMP/godot-release/metadata.json" >> "$GITHUB_ENV"
+          echo "RELEASE_AAB=$RUNNER_TEMP/godot-release/release.aab" >> "$GITHUB_ENV"
+          echo "GRADLE_USER_HOME=$RUNNER_TEMP/godot-gradle" >> "$GITHUB_ENV"
+      - name: Validate request and read committed version
+        run: |
+          python3 "$GITHUB_WORKSPACE/.release-tools/scripts/project.py" \
+            --project "$PROJECT_DIRECTORY" --preset "$EXPORT_PRESET" --output "$RELEASE_METADATA"
+      - name: Check publishing configuration
+        if: inputs.publish
+        env:
+          PROJECT_ID: ${{ inputs.gcp-project-id }}
+          PROVIDER: ${{ inputs.workload-identity-provider }}
+          SERVICE_ACCOUNT: ${{ inputs.service-account }}
+        run: |
+          test -n "$PROJECT_ID" && test -n "$PROVIDER" && test -n "$SERVICE_ACCOUNT" || {
+            echo "::error::Configure the Google Cloud project, identity provider, and service account."
+            exit 1
+          }
+      - name: Setup Fastlane
+        if: inputs.publish
+        uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: .release-tools
+      - name: Authenticate for version preflight
+        if: inputs.publish
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ inputs.gcp-project-id }}
+          workload_identity_provider: ${{ inputs.workload-identity-provider }}
+          service_account: ${{ inputs.service-account }}
+      - name: Reject already published or older versions before building
+        if: inputs.publish
+        working-directory: .release-tools
+        run: bundle exec fastlane android preflight
+      - name: Setup Java
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install verified Godot and Android tools
+        run: python3 "$GITHUB_WORKSPACE/.release-tools/scripts/install_tools.py" "$GODOT_VERSION" "$RUNNER_TEMP/godot-tools"
+      - name: Build and verify signed release
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.upload-keystore-base64 }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ secrets.upload-key-alias }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.upload-key-password }}
+        run: |
+          python3 "$GITHUB_WORKSPACE/.release-tools/scripts/build.py" \
+            --project "$PROJECT_DIRECTORY" --preset "$EXPORT_PRESET" \
+            --metadata "$RELEASE_METADATA" --work "$RUNNER_TEMP/godot-release" \
+            --godot-version "$GODOT_VERSION" \
+            --prepare-script "$PREPARE_SCRIPT" --verify-script "$VERIFY_SCRIPT"
+      - name: Prepare selected download
+        if: ${{ !inputs.publish }}
+        run: |
+          PYTHONPATH="$GITHUB_WORKSPACE/.release-tools/scripts" python3 - <<'PY'
+          import os
+          from build import artifact
+          artifact(os.path.join(os.environ["RUNNER_TEMP"], "godot-release"), os.environ["ARTIFACT_FORMAT"])
+          PY
+      - name: Save selected artifact
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-${{ inputs.artifact-format }}-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/godot-release/artifact/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Refresh Google authentication after building
+        if: inputs.publish
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ inputs.gcp-project-id }}
+          workload_identity_provider: ${{ inputs.workload-identity-provider }}
+          service_account: ${{ inputs.service-account }}
+      - name: Recheck version and publish to internal testing
+        if: inputs.publish
+        working-directory: .release-tools
+        run: bundle exec fastlane android publish
+      - name: Record result
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          metadata = pathlib.Path(os.environ["RELEASE_METADATA"])
+          data = json.loads(metadata.read_text()) if metadata.exists() else {}
+          revision = subprocess.check_output(
+              ["git", "-C", os.environ["GITHUB_WORKSPACE"] + "/.release-tools", "rev-parse", "HEAD"], text=True).strip()
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as report:
+              report.write("## Godot Android\n\n")
+              for key, value in {
+                  "Result": os.environ["RESULT"], "Game commit": os.environ["GITHUB_SHA"],
+                  "Workflow tools": revision, "Package": data.get("package", "unavailable"),
+                  "Version": f'{data.get("version", "?")} ({data.get("version_code", "?")})',
+                  "Mode": "Google Play internal testing" if os.environ["PUBLISH"] == "true"
+                          else os.environ["ARTIFACT_FORMAT"] + " download",
+              }.items():
+                  report.write(f"- {key}: `{value}`\n")
+          PY
+      - name: Remove temporary credentials and staged files
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, shutil
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "godot-release"
+          for name in ("upload.jks", ".password"):
+              (root / name).unlink(missing_ok=True)
+          shutil.rmtree(root / "project", ignore_errors=True)
+          shutil.rmtree(pathlib.Path(os.environ["RUNNER_TEMP"]) / "godot-gradle", ignore_errors=True)
+          PY

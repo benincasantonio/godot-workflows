@@ -1,0 +1,84 @@
+name: Validate shared workflow
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      revision:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Test release guards
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          bundle exec ruby tests/test_play.rb
+      - name: Validate workflow syntax
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            -o "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -shellcheck= .github/workflows/*.yml examples/android.yml
+  fixture:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GODOT_ANDROID_KEYSTORE_RELEASE_USER: fixture
+      GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: disposable-fixture-key
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install verified tools
+        run: python3 scripts/install_tools.py 4.6.2 "$RUNNER_TEMP/godot-tools"
+      - name: Build plain Godot fixture with a disposable key
+        run: |
+          export GRADLE_USER_HOME="$RUNNER_TEMP/fixture-gradle"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$RUNNER_TEMP/fixture.jks"
+          keytool -genkeypair -keystore "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH" -alias fixture \
+            -keyalg RSA -keysize 2048 -validity 2 -dname "CN=Disposable CI Fixture" \
+            -storepass:env GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD \
+            -keypass:env GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD
+          python3 scripts/project.py --project tests/fixture --preset Android --output "$RUNNER_TEMP/fixture-build/metadata.json"
+          python3 scripts/build.py --project tests/fixture --preset Android \
+            --metadata "$RUNNER_TEMP/fixture-build/metadata.json" --work "$RUNNER_TEMP/fixture-build"
+          PYTHONPATH=scripts python3 - <<'PY'
+          import os, pathlib, shutil
+          from build import artifact
+          work = pathlib.Path(os.environ["RUNNER_TEMP"]) / "fixture-build"
+          for format in ("AAB", "APK"):
+              artifact(work, format)
+              assert (work / "artifact" / ("release." + format.lower())).is_file()
+              shutil.rmtree(work / "artifact")
+          assert not (work / "project").exists()
+          print("Both artifact formats verified; staged signing files removed.")
+          PY
+      - name: Clean disposable files
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/fixture.jks"
+          rm -rf "$RUNNER_TEMP/fixture-build" "$RUNNER_TEMP/fixture-gradle"

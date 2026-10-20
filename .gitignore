@@ -1,0 +1,7 @@
+__pycache__/
+.bundle/
+vendor/
+.qa/
+gha-creds-*.json
+*.jks
+*.keystore

@@ -1,0 +1,49 @@
+name: Promote shared release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing immutable release tag (v1.x.y), already tested with a game
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-v1
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+    with:
+      revision: ${{ inputs.version }}
+  promote:
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.version }}
+          fetch-depth: 0
+      - name: Advance v1 to the validated immutable release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess
+          version = os.environ["VERSION"]
+          if not re.fullmatch(r"v1\.\d+\.\d+", version):
+              raise ValueError("Use an immutable v1.x.y tag.")
+          revision = subprocess.check_output(["git", "rev-parse", "refs/tags/" + version + "^{commit}"], text=True).strip()
+          workflow = pathlib.Path(".github/workflows/android.yml").read_text()
+          if not re.search(r"^\s+ref: " + re.escape(version) + r"$", workflow, re.M):
+              raise ValueError("Embedded tools tag must match the release tag.")
+          subprocess.run(["git", "tag", "--force", "v1", revision], check=True)
+          subprocess.run(["git", "push", "origin", "refs/tags/v1", "--force"], check=True)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as report:
+              report.write(f"Promoted `{version}` (`{revision}`) to `v1` after validation.\n")
+          PY

@@ -1,0 +1,31 @@
+require_relative "play"
+
+default_platform(:android)
+platform :android do
+  lane :preflight do
+    metadata = JSON.parse(File.read(ENV.fetch("RELEASE_METADATA")))
+    Supply.config = FastlaneCore::Configuration.create(Supply::Options.available_options, {
+      json_key: ENV.fetch("GOOGLE_APPLICATION_CREDENTIALS"),
+      package_name: metadata.fetch("package")
+    })
+    PlayRelease.preflight!(metadata, Supply::Client.make_from_config)
+  end
+
+  lane :publish do
+    preflight
+    metadata = JSON.parse(File.read(ENV.fetch("RELEASE_METADATA")))
+    upload_to_play_store(
+      json_key: ENV.fetch("GOOGLE_APPLICATION_CREDENTIALS"),
+      package_name: metadata.fetch("package"),
+      aab: ENV.fetch("RELEASE_AAB"),
+      track: "internal",
+      release_status: "completed",
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      rescue_changes_not_sent_for_review: false
+    )
+  end
+end

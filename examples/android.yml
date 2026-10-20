@@ -1,0 +1,34 @@
+name: Android release
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to Google Play internal testing
+        type: boolean
+        default: false
+      artifact-format:
+        description: Download format (ignored when publishing)
+        type: choice
+        options: [AAB, APK]
+        default: AAB
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  android:
+    uses: benincasantonio/godot-workflows/.github/workflows/android.yml@v1
+    with:
+      publish: ${{ inputs.publish }}
+      artifact-format: ${{ inputs.artifact-format }}
+      project-directory: .
+      export-preset: Android
+      godot-version: 4.6.2
+      gcp-project-id: ${{ vars.GCP_PROJECT_ID }}
+      workload-identity-provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      service-account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    secrets:
+      upload-keystore-base64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+      upload-key-alias: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+      upload-key-password: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
